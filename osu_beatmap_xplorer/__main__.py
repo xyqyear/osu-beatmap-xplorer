@@ -34,22 +34,19 @@ async def get(session, url, headers):
         return await response.json()
 
 
-async def try_request(session, mode, url, headers, data=None, retry_count=5):
-    while retry_count > 0:
+async def try_request(session, mode, url, headers, data=None):
+    retry_wait = 1
+    while True:
         try:
             if mode == "post":
                 return await post(session, url, headers, data)
             elif mode == "get":
                 return await get(session, url, headers)
         except Exception as e:
-            retry_count -= 1
             logging.warning(e)
-            logging.warning(f"Retrying {retry_count} more times...")
-            await asyncio.sleep(1)
-
-    # TODO: don't crash the program by using exponential backoff
-    logging.error("Failed to make request")
-    exit(1)
+            logging.warning(f"Retrying after {retry_wait} seconds")
+            await asyncio.sleep(retry_wait)
+            retry_wait *= 2
 
 
 async def authenticate(session, client_id, client_secret):
