@@ -67,10 +67,7 @@ async def authenticate(session, client_id, client_secret):
 
     json_response = await try_request(session, "post", url, headers, data)
 
-    return {
-        "access_token": json_response["access_token"],
-        "expires_in": json_response["expires_in"],
-    }
+    return json_response
 
 
 async def search_beatmaps(session, access_token, cursor_string=None):
