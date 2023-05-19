@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "osu-beatmap-xplorer"
+version = "0.1.0"
+description = ""
+authors = ["xyqyear <xyqyear@gmail.com>"]
+readme = "README.md"
+packages = [{include = "osu_beatmap_xplorer"}]
+
+[tool.poetry.scripts]
+serve = "osu_beatmap_xplorer.__main__:main"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+aiohttp = "^3.8.4"
+pyyaml = "^6.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
