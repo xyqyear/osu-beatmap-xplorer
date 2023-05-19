@@ -46,6 +46,7 @@ Once the application is running, you can access the API by sending a GET request
 - [x] basic functionality
 - [ ] use aiosqlite instead of sqlite3 so that database interactions are async and don't block the event loop
 - [x] don't crash the program when retry limit is reached
+- [ ] add filtering options to the API
 
 ---
 
