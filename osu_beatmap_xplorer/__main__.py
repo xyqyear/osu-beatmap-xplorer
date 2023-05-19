@@ -1,11 +1,11 @@
 import asyncio
 import logging
-import sqlite3
-import time
 import os
+import time
 
+import aiosqlite
 import yaml
-from aiohttp import ClientSession, web, ClientResponseError
+from aiohttp import ClientResponseError, ClientSession, web
 
 logging.basicConfig(level=logging.INFO)
 
@@ -79,61 +79,52 @@ async def search_beatmaps(session, access_token, cursor_string=None):
     return json_response
 
 
-def create_tables():
-    # TODO: use aiosqlite
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
-    c.execute(
-        """CREATE TABLE IF NOT EXISTS beatmapsets (
-                     id INTEGER PRIMARY KEY,
-                     artist TEXT,
-                     artist_unicode TEXT,
-                     creator TEXT,
-                     source TEXT,
-                     spotlight INTEGER,
-                     title TEXT,
-                     title_unicode TEXT,
-                     user_id INTEGER,
-                     bpm REAL,
-                     last_updated TEXT,
-                     ranked_date TEXT,
-                     submitted_date TEXT,
-                     tags TEXT)"""
-    )
-
-    c.execute(
-        """CREATE TABLE IF NOT EXISTS beatmaps (
-                     id INTEGER PRIMARY KEY,
-                     beatmapset_id INTEGER,
-                     difficulty_rating REAL,
-                     total_length INTEGER,
-                     user_id INTEGER,
-                     version TEXT,
-                     accuracy REAL,
-                     ar REAL,
-                     bpm REAL,
-                     convert INTEGER,
-                     count_circles INTEGER,
-                     count_sliders INTEGER,
-                     count_spinners INTEGER,
-                     cs REAL,
-                     drain REAL,
-                     hit_length INTEGER,
-                     last_updated TEXT,
-                     mode_int INTEGER,
-                     checksum TEXT,
-                     FOREIGN KEY (beatmapset_id) REFERENCES beatmapsets (id))"""
-    )
-
-    conn.commit()
-    conn.close()
+async def create_tables():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            """CREATE TABLE IF NOT EXISTS beatmapsets (
+                        id INTEGER PRIMARY KEY,
+                        artist TEXT,
+                        artist_unicode TEXT,
+                        creator TEXT,
+                        source TEXT,
+                        spotlight INTEGER,
+                        title TEXT,
+                        title_unicode TEXT,
+                        user_id INTEGER,
+                        bpm REAL,
+                        last_updated TEXT,
+                        ranked_date TEXT,
+                        submitted_date TEXT,
+                        tags TEXT)"""
+        )
+        await db.execute(
+            """CREATE TABLE IF NOT EXISTS beatmaps (
+                        id INTEGER PRIMARY KEY,
+                        beatmapset_id INTEGER,
+                        difficulty_rating REAL,
+                        total_length INTEGER,
+                        user_id INTEGER,
+                        version TEXT,
+                        accuracy REAL,
+                        ar REAL,
+                        bpm REAL,
+                        convert INTEGER,
+                        count_circles INTEGER,
+                        count_sliders INTEGER,
+                        count_spinners INTEGER,
+                        cs REAL,
+                        drain REAL,
+                        hit_length INTEGER,
+                        last_updated TEXT,
+                        mode_int INTEGER,
+                        checksum TEXT,
+                        FOREIGN KEY (beatmapset_id) REFERENCES beatmapsets (id))"""
+        )
+        await db.commit()
 
 
-def store_beatmapsets(beatmapsets):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
+async def store_beatmapsets(beatmapsets):
     beatmapset_rows = list()
     beatmap_rows = list()
 
@@ -154,7 +145,6 @@ def store_beatmapsets(beatmapsets):
             beatmapset["submitted_date"],
             beatmapset["tags"],
         )
-
         beatmapset_rows.append(beatmapset_values)
 
         for beatmap in beatmapset["beatmaps"]:
@@ -179,34 +169,29 @@ def store_beatmapsets(beatmapsets):
                 beatmap["mode_int"],
                 beatmap["checksum"],
             )
-
             beatmap_rows.append(beatmap_values)
 
-    c.executemany(
-        "INSERT OR IGNORE INTO beatmapsets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        beatmapset_rows,
-    )
-
-    c.executemany(
-        "INSERT OR IGNORE INTO beatmaps VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        beatmap_rows,
-    )
-
-    conn.commit()
-    conn.close()
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.executemany(
+            "INSERT OR IGNORE INTO beatmapsets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            beatmapset_rows,
+        )
+        await db.executemany(
+            "INSERT OR IGNORE INTO beatmaps VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            beatmap_rows,
+        )
+        await db.commit()
 
 
-def beatmapsets_in_db(beatmapsets):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
+async def beatmapsets_in_db(beatmapsets):
     id_list = [beatmapset["id"] for beatmapset in beatmapsets]
-
     placeholders = ", ".join("?" * len(id_list))
-    c.execute(f"SELECT id FROM beatmapsets WHERE id IN ({placeholders})", id_list)
 
-    ids_in_db = [item[0] for item in c.fetchall()]
-    conn.close()
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            f"SELECT id FROM beatmapsets WHERE id IN ({placeholders})", id_list
+        ) as cursor:
+            ids_in_db = [item[0] for item in await cursor.fetchall()]
 
     result = [id_value in ids_in_db for id_value in id_list]
 
@@ -214,7 +199,7 @@ def beatmapsets_in_db(beatmapsets):
 
 
 async def run_scraper(session):
-    create_tables()
+    await create_tables()
 
     with open("config.yml", "r") as f:
         config = yaml.safe_load(f)
@@ -249,7 +234,7 @@ async def run_scraper(session):
                 continue
             beatmapsets = data["beatmapsets"]
 
-            exist_in_db = beatmapsets_in_db(beatmapsets)
+            exist_in_db = await beatmapsets_in_db(beatmapsets)
             num_exist = sum(exist_in_db)
 
             num_new = len(beatmapsets) - num_exist
@@ -262,7 +247,7 @@ async def run_scraper(session):
                 logging.info("finished scraping")
                 break
 
-            store_beatmapsets(beatmapsets)
+            await store_beatmapsets(beatmapsets)
 
             cursor_string = data["cursor_string"]
             if not cursor_string:
@@ -278,13 +263,11 @@ async def run_scraper(session):
 async def random_beatmaps(request):
     num_beatmaps = int(request.match_info.get("num_beatmaps", "50"))
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-
-    c.execute("SELECT * FROM beatmaps ORDER BY RANDOM() LIMIT ?", (num_beatmaps,))
-
-    beatmaps = c.fetchall()
-    conn.close()
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT * FROM beatmaps ORDER BY RANDOM() LIMIT ?", (num_beatmaps,)
+        ) as cursor:
+            beatmaps = await cursor.fetchall()
 
     return web.json_response(beatmaps)
 
