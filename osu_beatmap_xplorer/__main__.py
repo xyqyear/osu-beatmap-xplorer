@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import os
+import re
 import time
+from datetime import datetime
 
 import aiosqlite
 import yaml
@@ -20,6 +22,10 @@ PORT = os.environ.get("OSU_PORT")
 if not PORT:
     PORT = 80
 DB_NAME = "beatmaps.db"
+
+
+def data_string_to_timestamp(data_string):
+    return datetime.strptime(data_string, "%Y-%m-%dT%H:%M:%SZ").timestamp()
 
 
 async def post(session, url, headers, data):
@@ -93,9 +99,9 @@ async def create_tables():
                         title_unicode TEXT,
                         user_id INTEGER,
                         bpm REAL,
-                        last_updated TEXT,
-                        ranked_date TEXT,
-                        submitted_date TEXT,
+                        last_updated INTEGER,
+                        ranked_date INTEGER,
+                        submitted_date INTEGER,
                         tags TEXT)"""
         )
         await db.execute(
@@ -116,7 +122,7 @@ async def create_tables():
                         cs REAL,
                         drain REAL,
                         hit_length INTEGER,
-                        last_updated TEXT,
+                        last_updated INTEGER,
                         mode_int INTEGER,
                         checksum TEXT,
                         FOREIGN KEY (beatmapset_id) REFERENCES beatmapsets (id))"""
@@ -140,9 +146,9 @@ async def store_beatmapsets(beatmapsets):
             beatmapset["title_unicode"],
             beatmapset["user_id"],
             beatmapset["bpm"],
-            beatmapset["last_updated"],
-            beatmapset["ranked_date"],
-            beatmapset["submitted_date"],
+            data_string_to_timestamp(beatmapset["last_updated"]),
+            data_string_to_timestamp(beatmapset["ranked_date"]),
+            data_string_to_timestamp(beatmapset["submitted_date"]),
             beatmapset["tags"],
         )
         beatmapset_rows.append(beatmapset_values)
@@ -165,7 +171,7 @@ async def store_beatmapsets(beatmapsets):
                 beatmap["cs"],
                 beatmap["drain"],
                 beatmap["hit_length"],
-                beatmap["last_updated"],
+                data_string_to_timestamp(beatmap["last_updated"]),
                 beatmap["mode_int"],
                 beatmap["checksum"],
             )
@@ -255,21 +261,116 @@ async def run_scraper(session):
 
             await asyncio.sleep(2)
 
-        # wait for 1 hour
         await asyncio.sleep(3600)
 
 
-# For the API
+def parse_filter_string(filter_string):
+    """
+    parse a filter string like
+    ```
+    mode_int=0,difficulty_rating>5,difficulty_rating<6,text~"maimai"
+    ```
+    into what build_query() expects
+    """
+    if not filter_string:
+        return []
+    filter_items = filter_string.split(",")
+    parsed_filter = []
+
+    for item in filter_items:
+        if "~" in item:
+            type, compare, value = item.partition("~")
+            parsed_filter.append(
+                {"type": "text", "compare": compare, "value": value.strip('""')}
+            )
+        else:
+            type, compare, value = re.split("(>=|<=|=|>|<)", item)
+            parsed_filter.append(
+                {
+                    "type": type,
+                    "compare": compare,
+                    "value": int(value) if value.isdigit() else float(value),
+                }
+            )
+
+    return parsed_filter
+
+
+def build_query(filters, limit=50):
+    """
+    filter example:
+    [
+        {"type": "mode_int", "compare": "=", "value": 0},
+        {"type": "difficulty_rating", "compare": ">", "value": 5},
+        {"type": "difficulty_rating", "compare": "<", "value": 6},
+        {"type": "text", "compare": "~", "value": "maimai"},
+    ]
+    """
+    query = "SELECT * FROM beatmapsets"
+    params = []
+    text_filter = []
+
+    if filters:
+        query += " WHERE id IN (SELECT DISTINCT beatmapset_id FROM beatmaps WHERE "
+
+        for filter_item in filters:
+            if filter_item["type"] == "text":
+                text_filter.append(filter_item["value"])
+            else:
+                query += "{} {} ? AND ".format(
+                    filter_item["type"], filter_item["compare"]
+                )
+                params.append(filter_item["value"])
+
+        # remove trailing "AND " and add closing parenthesis
+        query = query[:-5] + ")"
+
+        if text_filter:
+            query += " AND ("
+            for _ in text_filter:
+                query += "artist LIKE ? OR artist_unicode LIKE ? OR creator LIKE ? OR source LIKE ? OR tags LIKE ? OR "
+                params += ["%" + text + "%" for text in text_filter for _ in range(5)]
+            # remove trailing "OR " and add closing parenthesis
+            query = query[:-4] + ")"
+
+    # limit and randomness are always applied
+    query += " ORDER BY RANDOM() LIMIT ?"
+    params.append(limit)
+
+    return query, params
+
+
 async def random_beatmaps(request):
     num_beatmaps = int(request.match_info.get("num_beatmaps", "50"))
+    filter_string = request.rel_url.query.get("filter_string", "")
+    query, params = build_query(parse_filter_string(filter_string), num_beatmaps)
 
     async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute(
-            "SELECT * FROM beatmaps ORDER BY RANDOM() LIMIT ?", (num_beatmaps,)
-        ) as cursor:
-            beatmaps = await cursor.fetchall()
+        async with db.execute(query, params) as cursor:
+            beatmapsets = [
+                dict(zip([column[0] for column in cursor.description], row))
+                for row in await cursor.fetchall()
+            ]
 
-    return web.json_response(beatmaps)
+        id_to_beatmapset = {beatmapset["id"]: beatmapset for beatmapset in beatmapsets}
+        beatmapset_ids = [beatmapset["id"] for beatmapset in beatmapsets]
+        placeholders = ", ".join("?" for _ in beatmapset_ids)
+
+        async with db.execute(
+            f"SELECT * FROM beatmaps WHERE beatmapset_id IN ({placeholders})",
+            beatmapset_ids,
+        ) as cursor:
+            beatmaps = [
+                dict(zip([desc[0] for desc in cursor.description], beatmap))
+                for beatmap in await cursor.fetchall()
+            ]
+
+        for beatmap in beatmaps:
+            beatmapset_id = beatmap["beatmapset_id"]
+            beatmapset = id_to_beatmapset[beatmapset_id]
+            beatmapset["beatmaps"] = beatmapset.get("beatmaps", []) + [beatmap]
+
+    return web.json_response(beatmapsets)
 
 
 async def run():
