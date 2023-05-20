@@ -39,14 +39,39 @@ poetry run serve
 
 ## Accessing the API
 
-Once the application is running, you can access the API by sending a GET request to <http://localhost:8080/random_beatmaps/><num_beatmaps>, where <num_beatmaps> is the number of random beatmaps you want to retrieve.
+Once the application is running, you can access the API by sending a GET request to `http://localhost/random_beatmaps/<num_beatmaps>`, where `<num_beatmaps>` is the number of random beatmaps you want to retrieve.
+
+You can also add filters to your request with the filter_string query parameter. This parameter takes a comma-separated list of filter criteria, which follow the format `<field><operator><value>`. The `<field>` is the name of the field you want to filter by, `<operator>` is the comparison operator, and `<value>` is the value you want to compare the field against.
+
+Supported operators are:
+
+- = for exact equality,
+- \> for greater than,
+- < for less than,
+- \>= for greater than or equal to,
+- <= for less than or equal to,
+- ~ for text field contains.
+
+Here are some examples of filter_string:
+
+`mode_int=0,difficulty_rating>5,difficulty_rating<6,text~"maimai"` will retrieve beatmaps with mode_int exactly 0, difficulty_rating between 5 and 6, and any text field contains "maimai".
+
+`bpm>=180` will retrieve beatmaps with bpm greater than or equal to 180.
+
+`text~"pop"` will retrieve beatmaps where any of the text fields (artist, artist_unicode, creator, source, tags) contains the word "pop".
+
+An example API call with filtering might look like:
+
+```url
+http://localhost/random_beatmaps/50?filter_string=bpm>=180,text~"pop"
+```
 
 ## TODO
 
 - [x] basic functionality
 - [x] use aiosqlite instead of sqlite3 so that database interactions are async and don't block the event loop
 - [x] don't crash the program when retry limit is reached
-- [ ] add filtering options to the API
+- [x] add filtering options to the API
 
 ---
 
