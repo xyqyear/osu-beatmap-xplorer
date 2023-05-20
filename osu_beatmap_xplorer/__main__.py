@@ -24,7 +24,7 @@ if not PORT:
 DB_NAME = "beatmaps.db"
 
 
-def data_string_to_timestamp(data_string):
+def date_string_to_timestamp(data_string):
     return datetime.strptime(data_string, "%Y-%m-%dT%H:%M:%SZ").timestamp()
 
 
@@ -146,9 +146,9 @@ async def store_beatmapsets(beatmapsets):
             beatmapset["title_unicode"],
             beatmapset["user_id"],
             beatmapset["bpm"],
-            data_string_to_timestamp(beatmapset["last_updated"]),
-            data_string_to_timestamp(beatmapset["ranked_date"]),
-            data_string_to_timestamp(beatmapset["submitted_date"]),
+            date_string_to_timestamp(beatmapset["last_updated"]),
+            date_string_to_timestamp(beatmapset["ranked_date"]),
+            date_string_to_timestamp(beatmapset["submitted_date"]),
             beatmapset["tags"],
         )
         beatmapset_rows.append(beatmapset_values)
@@ -171,7 +171,7 @@ async def store_beatmapsets(beatmapsets):
                 beatmap["cs"],
                 beatmap["drain"],
                 beatmap["hit_length"],
-                data_string_to_timestamp(beatmap["last_updated"]),
+                date_string_to_timestamp(beatmap["last_updated"]),
                 beatmap["mode_int"],
                 beatmap["checksum"],
             )
