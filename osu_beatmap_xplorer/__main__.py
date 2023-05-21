@@ -1,9 +1,11 @@
 import asyncio
+import json
 import logging
 import os
 import re
 import time
 from datetime import datetime
+from functools import partial
 
 import aiosqlite
 import yaml
@@ -382,7 +384,7 @@ async def random_beatmaps(request):
             beatmapset = id_to_beatmapset[beatmapset_id]
             beatmapset["beatmaps"] = beatmapset.get("beatmaps", []) + [beatmap]
 
-    return web.json_response(beatmapsets)
+    return web.json_response(beatmapsets, dumps=partial(json.dumps, ensure_ascii=False))
 
 
 async def run():
