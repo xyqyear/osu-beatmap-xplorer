@@ -271,6 +271,7 @@ async def run_scraper(session):
 
             cursor_string = data["cursor_string"]
             if not cursor_string:
+                logging.info("finished scraping")
                 break
 
             await asyncio.sleep(2)
