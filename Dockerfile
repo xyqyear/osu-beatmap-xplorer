@@ -1,32 +1,62 @@
-FROM python:3.11-alpine as python-base
+ARG PYTHON_VERSION=3.11
 
-ENV POETRY_VERSION=1.5.0
-ENV POETRY_HOME=/opt/poetry
-ENV POETRY_VENV=/opt/poetry-venv
-ENV OSU_WORKING_DIR=/data
-ENV OSU_HOST=0.0.0.0
+FROM python:${PYTHON_VERSION}-alpine as poetry-base
 
-ENV POETRY_CACHE_DIR=/opt/.cache
+ARG POETRY_VERSION=1.5.0
 
-FROM python-base as poetry-base
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-RUN python3 -m venv $POETRY_VENV \
-    && $POETRY_VENV/bin/pip install -U pip setuptools \
-    && $POETRY_VENV/bin/pip install poetry==${POETRY_VERSION}
+RUN apk add --no-cache \
+        rust \
+        cargo \
+        curl \
+        gcc \
+        libressl-dev \
+        musl-dev \
+        libffi-dev && \
+    pip install --no-cache-dir poetry==${POETRY_VERSION} && \
+    apk del \
+        rust \
+        cargo \
+        curl \
+        gcc \
+        libressl-dev \
+        musl-dev \
+        libffi-dev
 
-FROM python-base as app
+FROM poetry-base as app-env
 
-COPY --from=poetry-base ${POETRY_VENV} ${POETRY_VENV}
-
-ENV PATH="${PATH}:${POETRY_VENV}/bin"
+ENV POETRY_VIRTUALENVS_IN_PROJECT=1 \
+    POETRY_NO_INTERACTION=1
 
 WORKDIR /app
 
 COPY poetry.lock pyproject.toml /app/
 
-RUN poetry install --no-interaction --no-cache --no-root --without dev
+RUN apk add --no-cache \
+        gcc \
+        musl-dev && \
+    poetry install --no-interaction --no-cache --no-root --without dev && \
+    apk del \
+        gcc \
+        musl-dev
+
+FROM python:${PYTHON_VERSION}-alpine as app
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    OSU_WORKING_DIR=/data \
+    OSU_HOST=0.0.0.0 \
+    OSU_PORT=80
+
+WORKDIR /app
+
+COPY --from=app-env /app/.venv /app/.venv
 
 COPY . /app
 
+RUN mkdir -p /data
+
 EXPOSE 80
-CMD [ "poetry", "run", "python", "osu_beatmap_xplorer/__main__.py"]
+
+CMD ["python3", "-m", "osu_beatmap_xplorer"]
