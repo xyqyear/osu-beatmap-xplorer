@@ -21,6 +21,12 @@ if not HOST:
 PORT = os.environ.get("OSU_PORT")
 if not PORT:
     PORT = 80
+elif PORT.isdigit():
+    PORT = int(PORT)
+else:
+    logging.error("OSU_PORT must be an integer")
+    exit(1)
+
 DB_NAME = "beatmaps.db"
 
 
@@ -207,15 +213,23 @@ async def beatmapsets_in_db(beatmapsets):
 async def run_scraper(session):
     await create_tables()
 
-    with open("config.yml", "r") as f:
-        config = yaml.safe_load(f)
+    if os.path.exists("config.yml"):
+        with open("config.yml", "r") as f:
+            config = yaml.safe_load(f)
+            client_id = config["client_id"]
+            client_secret = config["client_secret"]
+    else:
+        client_id = os.environ["CLIENT_ID"]
+        client_secret = os.environ["CLIENT_SECRET"]
+
+        if not client_id or not client_secret:
+            logging.error("No config file or environment variables found.")
+            exit(1)
 
     while True:
         logging.info("Authenticating...")
 
-        auth_info = await authenticate(
-            session, config["client_id"], config["client_secret"]
-        )
+        auth_info = await authenticate(session, client_id, client_secret)
         access_token = auth_info["access_token"]
         expires_in = auth_info["expires_in"]
         authenticate_time = time.time()
@@ -225,9 +239,7 @@ async def run_scraper(session):
         beatmap_count = 0
         while True:
             if time.time() - authenticate_time > expires_in - 600:
-                auth_info = await authenticate(
-                    session, config["client_id"], config["client_secret"]
-                )
+                auth_info = await authenticate(session, client_id, client_secret)
                 access_token = auth_info["access_token"]
                 expires_in = auth_info["expires_in"]
                 authenticate_time = time.time()
