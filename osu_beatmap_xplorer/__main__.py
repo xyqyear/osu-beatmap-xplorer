@@ -332,6 +332,8 @@ def build_query(filters, limit=50):
             if filter_item["type"] == "text":
                 text_filter.append(filter_item["value"])
             else:
+                # TODO: mitigate SQL injection by checking if type is valid
+                # TODO: but I'd like to only do this when this service ever goes public
                 query += "{} {} ? AND ".format(
                     filter_item["type"], filter_item["compare"]
                 )

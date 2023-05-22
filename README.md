@@ -72,6 +72,7 @@ http://localhost/random_beatmaps/50?filter_string=bpm>=180,text~"pop"
 - [x] use aiosqlite instead of sqlite3 so that database interactions are async and don't block the event loop
 - [x] don't crash the program when retry limit is reached
 - [x] add filtering options to the API
+- [ ] mitigate SQL injection attacks
 
 ---
 
