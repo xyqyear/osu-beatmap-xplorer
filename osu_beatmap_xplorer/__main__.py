@@ -30,6 +30,23 @@ else:
     exit(1)
 
 DB_NAME = "beatmaps.db"
+VALID_BEATMAP_FILTER = dict()
+VALID_BEATMAPSET_FILTER = {
+    "artist": True,
+    "artist_unicode": True,
+    "creator": True,
+    "source": True,
+    "user_id": True,
+}
+VALID_COMPARISONS = {
+    "=": True,
+    ">": True,
+    "<": True,
+    ">=": True,
+    "<=": True,
+    "!=": True,
+    "~": True,
+}
 
 
 def date_string_to_timestamp(data_string):
@@ -135,6 +152,11 @@ async def create_tables():
                         checksum TEXT,
                         FOREIGN KEY (beatmapset_id) REFERENCES beatmapsets (id))"""
         )
+
+        async with db.execute("PRAGMA table_info(beatmaps)") as cursor:
+            async for row in cursor:
+                VALID_BEATMAP_FILTER[row[1]] = True
+
         await db.commit()
 
 
@@ -261,13 +283,13 @@ async def run_scraper(session):
             beatmap_count += num_new
             logging.info(f"Scraped {num_new} beatmapsets (total: {beatmap_count})")
 
+            await store_beatmapsets(beatmapsets)
+
             # if there is any beatmapset that already exists in the database,
             # we can stop scraping
             if num_exist > 0:
                 logging.info("finished scraping")
                 break
-
-            await store_beatmapsets(beatmapsets)
 
             cursor_string = data["cursor_string"]
             if not cursor_string:
@@ -277,38 +299,6 @@ async def run_scraper(session):
             await asyncio.sleep(2)
 
         await asyncio.sleep(3600)
-
-
-def parse_filter_string(filter_string):
-    """
-    parse a filter string like
-    ```
-    mode_int=0,difficulty_rating>5,difficulty_rating<6,text~"maimai"
-    ```
-    into what build_query() expects
-    """
-    if not filter_string:
-        return []
-    filter_items = filter_string.split(",")
-    parsed_filter = []
-
-    for item in filter_items:
-        if "~" in item:
-            type, compare, value = item.partition("~")
-            parsed_filter.append(
-                {"type": "text", "compare": compare, "value": value.strip('""')}
-            )
-        else:
-            type, compare, value = re.split("(>=|<=|=|>|<)", item)
-            parsed_filter.append(
-                {
-                    "type": type,
-                    "compare": compare,
-                    "value": int(value) if value.isdigit() else float(value),
-                }
-            )
-
-    return parsed_filter
 
 
 def build_query(filters, limit=50):
@@ -323,32 +313,75 @@ def build_query(filters, limit=50):
     """
     query = "SELECT * FROM beatmapsets"
     params = []
+    beatmap_filter_query = ""
+    beatmapset_filter_query = ""
+    text_filters_query = ""
     text_filter = []
 
     if filters:
-        query += " WHERE id IN (SELECT DISTINCT beatmapset_id FROM beatmaps WHERE "
+        first_beatmap_filter = True
 
         for filter_item in filters:
-            if filter_item["type"] == "text":
-                text_filter.append(filter_item["value"])
-            else:
-                # TODO: mitigate SQL injection by checking if type is valid
-                # TODO: but I'd like to only do this when this service ever goes public
-                query += "{} {} ? AND ".format(
-                    filter_item["type"], filter_item["compare"]
-                )
-                params.append(filter_item["value"])
+            # a filter_item must have type, compare, and value and nothing else
+            if not (
+                "type" in filter_item
+                and "compare" in filter_item
+                and "value" in filter_item
+                and len(filter_item) == 3
+            ):
+                raise ValueError("invalid filter item")
 
-        # remove trailing "AND " and add closing parenthesis
-        query = query[:-5] + ")"
+            filter_type = filter_item["type"]
+            compare = filter_item["compare"]
+            value = filter_item["value"]
+
+            if compare not in VALID_COMPARISONS:
+                raise ValueError(f"invalid comparison operator: {compare}")
+
+            if filter_type == "text":
+                if compare != "~":
+                    raise ValueError("text filters must use the ~ operator")
+                text_filter.append(value)
+            elif filter_type in VALID_BEATMAPSET_FILTER:
+                beatmapset_filter_query += "{} {} ? AND ".format(filter_type, compare)
+                params.append(value)
+            elif filter_type in VALID_BEATMAP_FILTER:
+                if first_beatmap_filter:
+                    first_beatmap_filter = False
+                    beatmap_filter_query += (
+                        "id IN (SELECT DISTINCT beatmapset_id FROM beatmaps WHERE "
+                    )
+                beatmap_filter_query += "{} {} ? AND ".format(filter_type, compare)
+                params.append(value)
+            else:
+                raise ValueError(f"invalid filter type: {filter_type}")
+
+        if beatmap_filter_query:
+            beatmap_filter_query = beatmap_filter_query[:-5] + ")"
+        if beatmapset_filter_query:
+            beatmapset_filter_query = beatmapset_filter_query[:-5]
 
         if text_filter:
-            query += " AND ("
+            text_filters_query += "("
             for _ in text_filter:
-                query += "artist LIKE ? OR artist_unicode LIKE ? OR creator LIKE ? OR source LIKE ? OR tags LIKE ? OR "
+                text_filters_query += "artist LIKE ? OR artist_unicode LIKE ? OR creator LIKE ? OR source LIKE ? OR tags LIKE ? OR "
                 params += ["%" + text + "%" for text in text_filter for _ in range(5)]
             # remove trailing "OR " and add closing parenthesis
-            query = query[:-4] + ")"
+            text_filters_query = text_filters_query[:-4] + ")"
+
+    non_empty_conditions = [
+        condition
+        for condition in [
+            beatmap_filter_query,
+            beatmapset_filter_query,
+            text_filters_query,
+        ]
+        if condition
+    ]
+    if len(non_empty_conditions) > 1:
+        query += " WHERE " + " AND ".join(non_empty_conditions)
+    elif len(non_empty_conditions) == 1:
+        query += " WHERE " + non_empty_conditions[0]
 
     # limit and randomness are always applied
     query += " ORDER BY RANDOM() LIMIT ?"
@@ -359,8 +392,8 @@ def build_query(filters, limit=50):
 
 async def random_beatmaps(request):
     num_beatmaps = int(request.match_info.get("num_beatmaps", "50"))
-    filter_string = request.rel_url.query.get("filter_string", "")
-    query, params = build_query(parse_filter_string(filter_string), num_beatmaps)
+    filters = await request.json() if request.body_exists else []
+    query, params = build_query(filters, num_beatmaps)
 
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute(query, params) as cursor:

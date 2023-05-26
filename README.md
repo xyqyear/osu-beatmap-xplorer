@@ -39,32 +39,48 @@ poetry run serve
 
 ## Accessing the API
 
-Once the application is running, you can access the API by sending a GET request to `http://localhost/random_beatmaps/<num_beatmaps>`, where `<num_beatmaps>` is the number of random beatmaps you want to retrieve.
+The application API can be accessed by sending a GET request to `http://localhost/random_beatmaps/<num_beatmaps>`, where `<num_beatmaps>` is the number of random beatmaps you wish to retrieve.
 
-You can also add filters to your request with the filter_string query parameter. This parameter takes a comma-separated list of filter criteria, which follow the format `<field><operator><value>`. The `<field>` is the name of the field you want to filter by, `<operator>` is the comparison operator, and `<value>` is the value you want to compare the field against.
+You can apply filters to your request by sending them in the body of the HTTP request. The body should contain a JSON array of filter criteria, each one being an object following the format `{ "type": <field>, "compare": <operator>, "value": <value> }`. The `<field>` is the name of the field you want to filter by, `<operator>` is the comparison operator, and `<value>` is the value you want to compare the field against.
 
 Supported operators are:
 
-- = for exact equality,
-- \> for greater than,
-- < for less than,
-- \>= for greater than or equal to,
-- <= for less than or equal to,
-- ~ for text field contains.
+- `=` for exact equality,
+- `>` for greater than,
+- `<` for less than,
+- `>=` for greater than or equal to,
+- `<=` for less than or equal to,
+- `~` for text field contains.
 
-Here are some examples of filter_string:
+Filter fields can be divided into three categories:
 
-`mode_int=0,difficulty_rating>5,difficulty_rating<6,text~"maimai"` will retrieve beatmaps with mode_int exactly 0, difficulty_rating between 5 and 6, and any text field contains "maimai".
+- **Beatmapset fields**: These are fields that belong to the `beatmapsets` table.
+- **Beatmap fields**: These are fields that belong to the `beatmaps` table.
+- **Text fields**: This is a special type of field that operates on multiple fields of the `beatmapsets` table, which includes 'artist', 'artist_unicode', 'creator', 'source', and 'tags'.
 
-`bpm>=180` will retrieve beatmaps with bpm greater than or equal to 180.
+Here are some examples of filters:
 
-`text~"pop"` will retrieve beatmaps where any of the text fields (artist, artist_unicode, creator, source, tags) contains the word "pop".
+`[{"type": "mode_int", "compare": "=", "value": 0}, {"type": "difficulty_rating", "compare": ">", "value": 5}, {"type": "difficulty_rating", "compare": "<", "value": 6}, {"type": "text", "compare": "~", "value": "maimai"}]` 
 
-An example API call with filtering might look like:
+This will retrieve beatmaps with `mode_int` exactly 0, `difficulty_rating` between 5 and 6, and any text field contains "maimai".
 
-```url
-http://localhost/random_beatmaps/50?filter_string=bpm>=180,text~"pop"
+`[{"type": "bpm", "compare": ">=", "value": 180}]` 
+
+This will retrieve beatmaps with `bpm` greater than or equal to 180.
+
+`[{"type": "text", "compare": "~", "value": "pop"}]` 
+
+This will retrieve beatmaps where any of the text fields (artist, artist_unicode, creator, source, tags) contains the word "pop".
+
+In order to use these filters, they need to be sent in the body of your HTTP GET request as a JSON object. 
+
+To perform a request with curl, it would look like the following:
+
+```bash
+curl -X GET -H "Content-Type: application/json" -d '[{"type": "bpm", "compare": ">=", "value": 180}, {"type": "text", "compare": "~", "value": "pop"}]' http://localhost/random_beatmaps/50
 ```
+
+This will return up to 50 beatmaps with a bpm of at least 180 and contain the word "pop" in any of their text fields.
 
 ## TODO
 
@@ -72,7 +88,7 @@ http://localhost/random_beatmaps/50?filter_string=bpm>=180,text~"pop"
 - [x] use aiosqlite instead of sqlite3 so that database interactions are async and don't block the event loop
 - [x] don't crash the program when retry limit is reached
 - [x] add filtering options to the API
-- [ ] mitigate SQL injection attacks
+- [x] mitigate SQL injection attacks
 
 ---
 
