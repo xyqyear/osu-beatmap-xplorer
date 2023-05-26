@@ -60,19 +60,30 @@ Filter fields can be divided into three categories:
 
 Here are some examples of filters:
 
-`[{"type": "mode_int", "compare": "=", "value": 0}, {"type": "difficulty_rating", "compare": ">", "value": 5}, {"type": "difficulty_rating", "compare": "<", "value": 6}, {"type": "text", "compare": "~", "value": "maimai"}]` 
+```json
+[
+  { "type": "mode_int", "compare": "=", "value": 0 },
+  { "type": "difficulty_rating", "compare": ">", "value": 5 },
+  { "type": "difficulty_rating", "compare": "<", "value": 6 },
+  { "type": "text", "compare": "~", "value": "maimai" }
+]
+```
 
 This will retrieve beatmaps with `mode_int` exactly 0, `difficulty_rating` between 5 and 6, and any text field contains "maimai".
 
-`[{"type": "bpm", "compare": ">=", "value": 180}]` 
+```json
+[{ "type": "bpm", "compare": ">=", "value": 180 }]
+```
 
 This will retrieve beatmaps with `bpm` greater than or equal to 180.
 
-`[{"type": "text", "compare": "~", "value": "pop"}]` 
+```json
+[{ "type": "text", "compare": "~", "value": "pop" }]
+```
 
 This will retrieve beatmaps where any of the text fields (artist, artist_unicode, creator, source, tags) contains the word "pop".
 
-In order to use these filters, they need to be sent in the body of your HTTP GET request as a JSON object. 
+In order to use these filters, they need to be sent in the body of your HTTP GET request as a JSON object.
 
 To perform a request with curl, it would look like the following:
 
