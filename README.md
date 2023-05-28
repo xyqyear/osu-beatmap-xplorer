@@ -100,6 +100,7 @@ This will return up to 50 beatmaps with a bpm of at least 180 and contain the wo
 - [x] don't crash the program when retry limit is reached
 - [x] add filtering options to the API
 - [x] mitigate SQL injection attacks
+- [ ] solve needlessly authenticating every time it scrapes
 - [ ] solve double import when using `python -m` to run the application
 
 ---
