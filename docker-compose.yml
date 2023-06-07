@@ -2,7 +2,7 @@ version: '3'
 
 services:
   osu-beatmap-xplorer:
-    build: ./app
+    image: ghcr.io/xyqyear/osu-beatmap-xplorer
     ports:
       - 8080:80
     volumes:
