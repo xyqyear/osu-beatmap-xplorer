@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "osu-beatmap-xplorer"
-version = "0.2.0"
+version = "0.3.0"
 description = ""
 authors = ["xyqyear <xyqyear@gmail.com>"]
 readme = "README.md"
