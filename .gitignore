@@ -1,3 +1,4 @@
 config.yml
 reference/
 **/__pycache__/
+beatmaps.db

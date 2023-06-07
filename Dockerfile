@@ -8,20 +8,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 RUN apk add --no-cache \
-        rust \
-        cargo \
-        curl \
         gcc \
-        libressl-dev \
         musl-dev \
         libffi-dev && \
     pip install --no-cache-dir poetry==${POETRY_VERSION} && \
     apk del \
-        rust \
-        cargo \
-        curl \
         gcc \
-        libressl-dev \
         musl-dev \
         libffi-dev
 
