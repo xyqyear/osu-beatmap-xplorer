@@ -1,4 +1,4 @@
-from osu_beatmap_xplorer import build_query, create_tables
+from osu_beatmap_xplorer.__main__ import build_query, create_tables
 
 import pytest
 

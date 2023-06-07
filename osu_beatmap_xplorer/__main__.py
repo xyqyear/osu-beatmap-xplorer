@@ -250,16 +250,15 @@ async def run_scraper(session):
             logging.error("No config file or environment variables found.")
             exit(1)
 
+    logging.info("Authenticating...")
+
+    auth_info = await authenticate(session, client_id, client_secret)
+    access_token = auth_info["access_token"]
+    expires_in = auth_info["expires_in"]
+    authenticate_time = time.time()
     while True:
-        logging.info("Authenticating...")
-
-        auth_info = await authenticate(session, client_id, client_secret)
-        access_token = auth_info["access_token"]
-        expires_in = auth_info["expires_in"]
-        authenticate_time = time.time()
-        cursor_string = None
-
         logging.info("Scraping...")
+        cursor_string = None
         beatmap_count = 0
         while True:
             if time.time() - authenticate_time > expires_in - 600:
